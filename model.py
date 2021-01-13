@@ -36,15 +36,15 @@ class EncoderDecoder(nn.Module):
           - x_emb (torch.tensor) (B x len x d) : 入力データ(位置エンコーディングまで終わったもの)
           - y_emb (torch.tensor) (B x len x d) : 出力データ(位置エンコーディングまで終わったもの)
         """
-        z = self.encoder(x_emb)
-        y_out = self.decoder(y_emb, z, mask)
+        z = self.encode(x_emb)
+        y_out = self.decode(y_emb, z, mask)
         return y_out
     
     def encode(self, x_emb):
         z = self.encoder(x_emb)
         return z
     
-    def decode(self, z, y_emb, mask):
+    def decode(self, y_emb, z, mask):
         y = self.decoder(y_emb, z, mask)
         return y
 
@@ -85,8 +85,8 @@ class EncoderLayer(nn.Module):
     def __init__(self, d_model, h=8, dropout=0):
         super().__init__()
         self.multi_attention = MultiHeadAttention(h,d_model,dropout)
-        self.feedforward = FeedForward(d_model)
         self.layer_norm_1 = LayerNorm(d_model)
+        self.feedforward = FeedForward(d_model)
         self.layer_norm_2 = LayerNorm(d_model)
     
     def forward(self, x):
@@ -135,7 +135,7 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.l2(self.dropout(F.relu(self.l1(x))))
 
-def attention(query, key, value, mask=None, dropout=0.2):
+def attention(query, key, value, mask=None, dropout=0.0):
     """
     Scale Dot-Product Attention (論文Fig.2)
 
@@ -155,7 +155,7 @@ def attention(query, key, value, mask=None, dropout=0.2):
     if mask is not None:# decoing
         scale = scale.masked_fill(mask == 0, -1e9)# -infで埋めるイメージ。めちゃめちゃ確率小さくなる
     atn = F.softmax(scale, dim=-1)
-    if dropout is not None:
+    if dropout is not None:# ここにはさむべき？？
         atn = F.dropout(atn, p=dropout)   
     out = torch.matmul(atn, value)
     return out
@@ -195,9 +195,13 @@ class MultiHeadAttention(nn.Module):
           - out (torch.tensor) (B x len x d)
         """
         n_batch = query.shape[0]
-        m_q = self.linear_q(query).reshape(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)# transposeしないと、うまく変形できない。(try.ipynb参照)
-        m_k = self.linear_k(key).reshape(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)
-        m_v = self.linear_v(value).reshape(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)
+        # m_q = self.linear_q(query).reshape(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)# transposeしないと、うまく変形できない。(try.ipynb参照)
+        # m_k = self.linear_k(key).reshape(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)
+        # m_v = self.linear_v(value).reshape(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)
+
+        m_q = self.linear_q(query).view(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)# transposeしないと、うまく変形できない。(try.ipynb参照)
+        m_k = self.linear_k(key).view(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)
+        m_v = self.linear_v(value).view(n_batch, -1, self.h, self.d_m_atn).transpose(1,2)
         z = []
         for i in range(self.h):
             z.append(attention(m_q[:,i,:,:], m_k[:,i,:,:], m_v[:,i,:,:],mask))
@@ -255,7 +259,7 @@ class DecoderLayer(nn.Module):
         out = self.masked_multi_attention(x,x,x,mask)
         out = self.layer_norm_1(x + out)
         res = out
-        out = self.multi_attention(out,memory, memory)
+        out = self.multi_attention(out, memory, memory)
         out = self.layer_norm_2(res + out)
         res = out
         out = self.feedforward(out)
@@ -314,7 +318,8 @@ class Generator(nn.Module):
         super().__init__()
         self.linear = nn.Linear(d_model, vocab_num)
     def forward(self, x):
-        return F.softmax(self.linear(x), dim=-1)
+        # return F.softmax(self.linear(x), dim=-1)
+        return self.linear(x)
 
 class Model(nn.Module):
     """
@@ -375,7 +380,7 @@ class Model(nn.Module):
             mask = make_mask(y.shape[1])
             tmp_y = self.emb_y(y)
             tmp_y = self.pos_enc_y(tmp_y)
-            tmp_y = self.enc_dec.decode(z, tmp_y, mask)
+            tmp_y = self.enc_dec.decode(tmp_y, z, mask)
             tmp_y = self.gen(tmp_y)
             next_word = torch.max(tmp_y[:,-1,:],dim=-1)[1]
             y = torch.cat([y,next_word.unsqueeze(0)],dim = -1)

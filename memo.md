@@ -20,7 +20,7 @@ transformerの実装を行う。
 
 #### 原因
 
-decoder_layerで、エンコーダの入力を入れるattentionで間違えて上と同じあっ天地温を用いていた
+decoder_layerで、エンコーダの入力を入れるattentionで間違えて上と同じattention layerを用いていた
 
 ---
 

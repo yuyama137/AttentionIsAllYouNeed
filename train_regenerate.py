@@ -19,11 +19,11 @@ import copy
 
 max_itr = 100
 checkout_itr = 10
-batch_size = 5
+batch_size = 5å
 word_len = 8 # 文章の長さ
 vocab_num = 10
 device = "cpu"
-lr = 0.0001
+lr = 0.00005
 batch_num = 10
 n_minibatch = 8
 max_epoch = 10
@@ -80,7 +80,7 @@ def culc_loss(loss_func, inputs, targets):
         _loss += cross_ent(inputs[i], targets[i])
     _loss /= B# バッチ平均
     loss /= B
-    return _loss
+    return loss
 
 def cross_ent(ipt, tgt):
     ans = 0
